@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 interface AdBannerProps {
   width: number;
@@ -9,45 +9,53 @@ interface AdBannerProps {
   placementName: string;
 }
 
-let adInstanceCounter = 0;
+// Prevent duplicate loads per placement
+const loadedPlacements = new Set<string>();
 
-export function AdBanner({ width, height, className, domain, affQuery, placementName }: AdBannerProps) {
+export function AdBanner({
+  width,
+  height,
+  className,
+  domain,
+  affQuery,
+  placementName,
+}: AdBannerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [instanceId] = useState(() => ++adInstanceCounter);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Clear previous content
-    container.innerHTML = "";
+    if (loadedPlacements.has(placementName)) return;
+    loadedPlacements.add(placementName);
 
-    // Create the ins element
+    const normalizedDomain = domain.startsWith("http")
+      ? domain
+      : `https:${domain}`;
+
     const ins = document.createElement("ins");
-    ins.style.width = width === 0 ? "0px" : `${width}px`;
-    ins.style.height = height === 0 ? "0px" : `${height}px`;
+    ins.style.width = `${width}px`;
+    ins.style.height = `${height}px`;
     ins.style.display = "inline-block";
+    ins.className = className;
     ins.setAttribute("data-width", String(width));
     ins.setAttribute("data-height", String(height));
-    ins.className = className;
-    ins.setAttribute("data-domain", domain);
+    ins.setAttribute("data-domain", normalizedDomain);
     ins.setAttribute("data-affquery", affQuery);
 
     container.appendChild(ins);
 
-    // Create and append the script with a cache-buster to force re-execution
     const script = document.createElement("script");
-    script.src = `${domain}/js/responsive.js?t=${Date.now()}-${instanceId}`;
+    script.src = `${normalizedDomain}${affQuery}`;
     script.async = true;
 
     container.appendChild(script);
 
     return () => {
-      if (container) {
-        container.innerHTML = "";
-      }
+      container.innerHTML = "";
+      loadedPlacements.delete(placementName);
     };
-  }, [width, height, className, domain, affQuery, placementName, instanceId]);
+  }, [width, height, className, domain, affQuery, placementName]);
 
   return (
     <div
@@ -58,7 +66,10 @@ export function AdBanner({ width, height, className, domain, affQuery, placement
   );
 }
 
-// Pre-configured ad components
+// ─────────────────────────────────────
+// Pre-configured ad components (KEEP THESE)
+// ─────────────────────────────────────
+
 export function MiniBannerAd() {
   return (
     <AdBanner
