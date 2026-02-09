@@ -1,61 +1,88 @@
  import { useState, useEffect, useCallback } from "react";
- import { TelegramLogin, TelegramUser } from "./TelegramLogin";
+ import { EmailLogin } from "./EmailLogin";
  import { CommentList } from "./CommentList";
  import { Button } from "@/components/ui/button";
  import { Textarea } from "@/components/ui/textarea";
  import { Loader2, Send, LogOut, MessageCircle } from "lucide-react";
  import { useToast } from "@/hooks/use-toast";
+ import { supabase } from "@/integrations/supabase/client";
+ import type { User } from "@supabase/supabase-js";
  
  interface CommentSectionProps {
    seriesId: string;
    chapterId?: string;
-   botName?: string;
  }
  
  export function CommentSection({
    seriesId,
    chapterId,
-   botName = "BnToonAccBot",
  }: CommentSectionProps) {
-   const [user, setUser] = useState<TelegramUser | null>(null);
+   const [user, setUser] = useState<User | null>(null);
    const [content, setContent] = useState("");
    const [isSubmitting, setIsSubmitting] = useState(false);
    const [refreshKey, setRefreshKey] = useState(0);
    const { toast } = useToast();
  
-   // Check for existing session
    useEffect(() => {
-     const stored = localStorage.getItem("tg_user");
-     if (stored) {
-       try {
-         setUser(JSON.parse(stored));
-       } catch {
-         localStorage.removeItem("tg_user");
+     let isMounted = true;
+     supabase.auth.getSession().then(({ data }) => {
+       if (isMounted) {
+         setUser(data.session?.user ?? null);
        }
-     }
+     });
+
+     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+       setUser(session?.user ?? null);
+     });
+
+     return () => {
+       isMounted = false;
+       subscription.subscription.unsubscribe();
+     };
    }, []);
  
-   const handleAuth = useCallback((authUser: TelegramUser) => {
+   const handleAuth = useCallback((authUser: User) => {
      setUser(authUser);
    }, []);
  
    const handleLogout = () => {
-     localStorage.removeItem("tg_user");
-     document.cookie = "tg_auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+     supabase.auth.signOut();
      setUser(null);
    };
+
+   const getDisplayName = useCallback((authUser: User) => {
+     return (
+       (authUser.user_metadata?.full_name as string | undefined) ||
+       authUser.email?.split("@")[0] ||
+       "User"
+     );
+   }, []);
  
    const handleSubmit = async () => {
      if (!content.trim() || !user) return;
- 
+
      setIsSubmitting(true);
      try {
+       const session = await supabase.auth.getSession();
+       const accessToken = session.data.session?.access_token;
+       if (!accessToken) {
+         toast({
+           title: "Login required",
+           description: "Please sign in to post a comment.",
+           variant: "destructive",
+         });
+         setIsSubmitting(false);
+         return;
+       }
+
        const response = await fetch(
          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comments`,
          {
            method: "POST",
-           headers: { "Content-Type": "application/json" },
-           credentials: "include",
+           headers: {
+             "Content-Type": "application/json",
+             Authorization: `Bearer ${accessToken}`,
+           },
            body: JSON.stringify({
              seriesId,
              chapterId: chapterId || null,
@@ -106,22 +133,11 @@
            <div className="space-y-4">
              <div className="flex items-center justify-between">
                <div className="flex items-center gap-3">
-                 {user.photo_url ? (
-                   <img
-                     src={user.photo_url}
-                     alt={user.telegram_name}
-                     className="w-10 h-10 rounded-full"
-                   />
-                 ) : (
-                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                     {user.telegram_name.charAt(0).toUpperCase()}
-                   </div>
-                 )}
+                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                   {getDisplayName(user).charAt(0).toUpperCase()}
+                 </div>
                  <div>
-                   <p className="font-medium text-foreground">{user.telegram_name}</p>
-                   {user.telegram_username && (
-                     <p className="text-sm text-muted-foreground">@{user.telegram_username}</p>
-                   )}
+                   <p className="font-medium text-foreground">{getDisplayName(user)}</p>
                  </div>
                </div>
                <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
@@ -157,7 +173,7 @@
              </div>
            </div>
          ) : (
-           <TelegramLogin botName={botName} onAuth={handleAuth} />
+           <EmailLogin onAuth={handleAuth} />
          )}
        </div>
  
