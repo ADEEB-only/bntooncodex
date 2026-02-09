@@ -240,7 +240,7 @@ export function Header() {
                     }}
                   >
                     <LogIn className="h-4 w-4" />
-                    Login with Telegram
+                    Login with Email
                   </Button>
                 )}
               </div>
@@ -258,7 +258,7 @@ export function Header() {
           <DialogHeader>
             <DialogTitle>Login to BnToon</DialogTitle>
             <DialogDescription>
-              Connect your Telegram account to comment on comics and chapters.
+              Connect your email to comment on comics and chapters.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-center py-6">
