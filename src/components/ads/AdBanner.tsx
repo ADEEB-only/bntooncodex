@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+const loadedScripts = new Set<string>();
 
 interface AdBannerProps {
   width: number;
@@ -23,39 +24,42 @@ export function AdBanner({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  const container = containerRef.current;
+  if (!container) return;
 
-    if (loadedPlacements.has(placementName)) return;
-    loadedPlacements.add(placementName);
+  const normalizedDomain = domain.startsWith("http")
+    ? domain
+    : `https:${domain}`;
 
-    const normalizedDomain = domain.startsWith("http")
-      ? domain
-      : `https:${domain}`;
+  // Create <ins>
+  const ins = document.createElement("ins");
+  ins.style.width = `${width}px`;
+  ins.style.height = `${height}px`;
+  ins.style.display = "inline-block";
+  ins.className = className;
+  ins.setAttribute("data-width", String(width));
+  ins.setAttribute("data-height", String(height));
+  ins.setAttribute("data-domain", normalizedDomain);
+  ins.setAttribute("data-affquery", affQuery);
 
-    const ins = document.createElement("ins");
-    ins.style.width = `${width}px`;
-    ins.style.height = `${height}px`;
-    ins.style.display = "inline-block";
-    ins.className = className;
-    ins.setAttribute("data-width", String(width));
-    ins.setAttribute("data-height", String(height));
-    ins.setAttribute("data-domain", normalizedDomain);
-    ins.setAttribute("data-affquery", affQuery);
+  container.appendChild(ins);
 
-    container.appendChild(ins);
+  // Load script ONCE per domain
+  if (!loadedScripts.has(normalizedDomain)) {
+    loadedScripts.add(normalizedDomain);
 
     const script = document.createElement("script");
     script.src = `${normalizedDomain}${affQuery}`;
     script.async = true;
+    script.defer = true;
 
-    container.appendChild(script);
+    document.body.appendChild(script);
+  }
 
-    return () => {
-      container.innerHTML = "";
-      loadedPlacements.delete(placementName);
-    };
-  }, [width, height, className, domain, affQuery, placementName]);
+  return () => {
+    container.innerHTML = "";
+  };
+}, [width, height, className, domain, affQuery]);
 
   return (
     <div
