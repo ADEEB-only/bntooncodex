@@ -5,20 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
-interface TelegramUser {
-  telegram_id: number;
-  telegram_username?: string;
-  telegram_name: string;
-}
- 
  interface Comment {
    id: string;
    series_id: string;
    chapter_id: string | null;
-   telegram_id: number;
-   telegram_username: string | null;
-   telegram_name: string;
+   author_id: string | null;
+   author_name: string;
+   author_handle: string | null;
    content: string;
    created_at: string;
   parent_id: string | null;
@@ -29,7 +25,7 @@ interface TelegramUser {
    seriesId: string;
    chapterId?: string;
    refreshKey?: number;
-  currentUser?: TelegramUser | null;
+  currentUser?: User | null;
   onReplySubmitted?: () => void;
  }
  
@@ -77,14 +73,26 @@ export function CommentList({ seriesId, chapterId, refreshKey = 0, currentUser, 
   const handleDelete = async (commentId: string) => {
     setDeletingId(commentId);
     try {
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      if (!accessToken) {
+        toast({
+          title: "Login required",
+          description: "Please sign in to delete comments.",
+          variant: "destructive",
+        });
+        setDeletingId(null);
+        return;
+      }
+
       const headers: Record<string, string> = { "Content-Type": "application/json" };
+      headers.Authorization = `Bearer ${accessToken}`;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comments`,
         {
           method: "DELETE",
           headers,
-          credentials: "include",
           body: JSON.stringify({ commentId }),
         }
       );
@@ -116,12 +124,26 @@ export function CommentList({ seriesId, chapterId, refreshKey = 0, currentUser, 
 
     setIsSubmittingReply(true);
     try {
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      if (!accessToken) {
+        toast({
+          title: "Login required",
+          description: "Please sign in to reply.",
+          variant: "destructive",
+        });
+        setIsSubmittingReply(false);
+        return;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comments`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
           body: JSON.stringify({
             seriesId,
             chapterId: chapterId || null,
@@ -170,7 +192,7 @@ export function CommentList({ seriesId, chapterId, refreshKey = 0, currentUser, 
 
   const canDelete = (comment: Comment) => {
     if (isAdmin) return true;
-    if (currentUser && currentUser.telegram_id === comment.telegram_id) return true;
+    if (currentUser && comment.author_id && currentUser.id === comment.author_id) return true;
     return false;
   };
  
@@ -208,17 +230,17 @@ export function CommentList({ seriesId, chapterId, refreshKey = 0, currentUser, 
          >
            <div className="flex items-start gap-3">
              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
-               {comment.telegram_name.charAt(0).toUpperCase()}
+               {comment.author_name.charAt(0).toUpperCase()}
              </div>
              <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-foreground">
-                    {comment.telegram_name}
+                    {comment.author_name}
                    </span>
-                  {comment.telegram_username && (
+                  {comment.author_handle && (
                     <span className="text-sm text-muted-foreground">
-                      @{comment.telegram_username}
+                      @{comment.author_handle}
                     </span>
                   )}
                   <span className="text-xs text-muted-foreground">
@@ -320,17 +342,17 @@ export function CommentList({ seriesId, chapterId, refreshKey = 0, currentUser, 
                   {comment.replies.map((reply) => (
                     <div key={reply.id} className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                        {reply.telegram_name.charAt(0).toUpperCase()}
+                        {reply.author_name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-foreground text-sm">
-                              {reply.telegram_name}
+                              {reply.author_name}
                             </span>
-                            {reply.telegram_username && (
+                            {reply.author_handle && (
                               <span className="text-xs text-muted-foreground">
-                                @{reply.telegram_username}
+                                @{reply.author_handle}
                               </span>
                             )}
                             <span className="text-xs text-muted-foreground">
