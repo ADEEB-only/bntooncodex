@@ -10,7 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TelegramLogin, TelegramUser } from "@/components/comments/TelegramLogin";
+import { EmailLogin } from "@/components/comments/EmailLogin";
+import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import logo from "@/assets/logo.png";
 
 export function Header() {
@@ -19,33 +21,46 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [user, setUser] = useState<TelegramUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Check for existing session on mount
   useEffect(() => {
-    const stored = localStorage.getItem("tg_user");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("tg_user");
+    let isMounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (isMounted) {
+        setUser(data.session?.user ?? null);
       }
-    }
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
-  const handleAuth = useCallback((authUser: TelegramUser) => {
+  const handleAuth = useCallback((authUser: User) => {
     setUser(authUser);
     setLoginOpen(false);
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("tg_user");
-    document.cookie = "tg_auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+    supabase.auth.signOut();
     setUser(null);
   };
+
+  const getDisplayName = useCallback((authUser: User) => {
+    const name =
+      (authUser.user_metadata?.full_name as string | undefined) ||
+      authUser.email?.split("@")[0] ||
+      "User";
+    return name;
+  }, []);
 
   // Listen for keyboard shortcuts
   useEffect(() => {
@@ -62,6 +77,9 @@ export function Header() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
+
+  const displayName = user ? getDisplayName(user) : "";
+  const displayInitial = displayName ? displayName.charAt(0).toUpperCase() : "";
 
   return (
     <>
@@ -129,10 +147,10 @@ export function Header() {
               <div className="hidden sm:flex items-center gap-2">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted">
                   <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                    {user.telegram_name.charAt(0).toUpperCase()}
+                    {displayInitial}
                   </div>
                   <span className="text-sm font-medium text-foreground max-w-24 truncate">
-                    {user.telegram_name}
+                    {displayName}
                   </span>
                 </div>
                 <Button
@@ -196,9 +214,9 @@ export function Header() {
                   <div className="flex items-center justify-between px-3 py-2 mt-2 border-t border-border">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
-                        {user.telegram_name.charAt(0).toUpperCase()}
+                        {displayInitial}
                       </div>
-                      <span className="text-sm font-medium">{user.telegram_name}</span>
+                      <span className="text-sm font-medium">{displayName}</span>
                     </div>
                     <Button
                       variant="ghost"
@@ -244,7 +262,7 @@ export function Header() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-center py-6">
-            <TelegramLogin botName="BnToonAccBot" onAuth={handleAuth} />
+            <EmailLogin onAuth={handleAuth} />
           </div>
         </DialogContent>
       </Dialog>
